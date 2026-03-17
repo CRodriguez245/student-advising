@@ -62,6 +62,7 @@ const DecisionCoachAdapter = ({
   const [sessionId] = useState(() => `illinois-tech-${Date.now()}`);
   const [personaStage, setPersonaStage] = useState(null);
   const [personaProgress, setPersonaProgress] = useState(null);
+  const [dqCoverage, setDqCoverage] = useState({}); // For stateless API (e.g. Vercel): send with each request
   const messagesEndRef = useRef(null);
   
   // Initialize messages based on mode
@@ -79,14 +80,17 @@ const DecisionCoachAdapter = ({
           content: `Hi, I'm ${personaNames[persona]}. I'm a student at Illinois Tech and I'm feeling really confused about my academic path. Can you help me think through this?`
         }]);
       }
+      setDqCoverage({});
     }
   }, [mode, persona]);
   
   // Configuration - Illinois Tech Decision Coach Backend
-  const BACKEND_URL = process.env.REACT_APP_DECISION_COACH_URL || 
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? 'http://localhost:3002/chat'
-      : process.env.REACT_APP_BACKEND_URL || 'http://localhost:3002/chat'); // Update with production URL when deployed
+  // Production (e.g. Vercel): use same-origin /api/chat so the serverless function handles the request
+  const BACKEND_URL = process.env.REACT_APP_DECISION_COACH_URL ||
+    (typeof window !== 'undefined' && (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+      ? `${window.location.origin}/api/chat`
+      : (process.env.REACT_APP_BACKEND_URL || 'http://localhost:3002/chat'));
+  const isStatelessApi = typeof window !== 'undefined' && (BACKEND_URL.includes('/api/chat') || BACKEND_URL.startsWith(window.location.origin));
   
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -167,6 +171,11 @@ const DecisionCoachAdapter = ({
         // Include initial persona message if this is the first user message in practice mode
         ...(shouldIncludeInitialPersonaMessage && {
           initial_persona_message: messages.find(m => m.role === 'assistant')?.content
+        }),
+        // Stateless API (Vercel /api/chat): send conversation history and DQ coverage so backend doesn't need session storage
+        ...(isStatelessApi && {
+          conversation_history: messages.map(m => ({ role: m.role, content: m.content })),
+          dq_coverage: dqCoverage
         })
       };
       
@@ -232,7 +241,8 @@ const DecisionCoachAdapter = ({
       };
       
       setMessages(prev => [...prev, messageWithMetadata]);
-      
+      if (data.dqCoverage && isStatelessApi) setDqCoverage(data.dqCoverage);
+
       // Log DQ scores for debugging
       if (data.dq_score) {
         console.log(`[Decision Coach] ${mode === 'coach' ? 'Coach' : 'Student'} DQ Score:`, {
@@ -256,7 +266,9 @@ const DecisionCoachAdapter = ({
       
       // More detailed error message
       let errorMessage = "I'm having trouble connecting to the decision coach right now.";
-      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      if (isStatelessApi) {
+        errorMessage += "\n\nIf this is your deployed site, add OPENAI_API_KEY in Vercel → Project Settings → Environment Variables, then redeploy.";
+      } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
         errorMessage += "\n\nStart the backend in a separate terminal:\n  npm run backend\n\nOr from the backend folder:\n  cd backend && npm install && npm start\n\nThen test: curl http://localhost:3002/health";
       } else if (error.message.includes('CORS')) {
         errorMessage += "\n\nCORS error detected. The backend allows localhost; check that the backend is running (npm run backend).";

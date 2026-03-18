@@ -2421,7 +2421,8 @@ const IllinoisTechSkillTree = () => {
   
   const handleWheel = (e) => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    // Smaller per-wheel step = less sensitive zoom
+    const delta = e.deltaY > 0 ? 0.97 : 1.03;
     setZoom(z => Math.max(0.3, Math.min(3, z * delta)));
   };
   

@@ -77,7 +77,7 @@ npm run dev
 - Restart the server after creating/updating `.env`
 
 ### "Port 3002 already in use"
-- Change `PORT` in `.env` to a different port (e.g., `3003`)
+- Change `PORT` in `.env` to a different port (e.g., `3010`; avoid `3003`, which this repo uses for the React app)
 - Or stop whatever is using port 3002
 
 ### "Cannot find module"

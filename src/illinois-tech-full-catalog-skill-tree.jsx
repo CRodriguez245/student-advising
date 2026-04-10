@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import DecisionCoachAdapter from './components/DecisionCoachAdapter';
 
 // Feature flag for Decision Coach Engine
@@ -1440,7 +1440,6 @@ When recommending courses, prioritize ones the student can actually take (prereq
       if (foundCodes.length >= 2) {
         setExtractedPath({
           courses: ['START', ...foundCodes],
-          name: 'Suggested Sequence',
           color: '#00FF88'
         });
       } else {
@@ -1551,7 +1550,6 @@ When recommending courses, prioritize ones the student can actually take (prereq
           <div style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>🤖</span> Course Advisor
           </div>
-          <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>AI-powered academic planning</div>
         </div>
         <button
           onClick={() => setIsOpen(false)}
@@ -1739,7 +1737,6 @@ When recommending courses, prioritize ones the student can actually take (prereq
             if (onSuggestPath) {
               onSuggestPath({
                 courses: ['START', 'CS-100', 'CS-115', 'CS-116', 'CS-331', 'CS-430', 'BS-CS'],
-                name: 'Quick CS Path',
                 color: '#00D4FF'
               });
             }
@@ -1761,7 +1758,6 @@ When recommending courses, prioritize ones the student can actually take (prereq
             if (onSuggestPath) {
               onSuggestPath({
                 courses: ['START', 'MMAE-100', 'MMAE-200', 'MMAE-205', 'MMAE-232', 'MMAE-312', 'BS-ME'],
-                name: 'Quick ME Path',
                 color: '#F97316'
               });
             }
@@ -1783,7 +1779,6 @@ When recommending courses, prioritize ones the student can actually take (prereq
             if (onSuggestPath) {
               onSuggestPath({
                 courses: ['START', 'ECE-100', 'ECE-211', 'ECE-218', 'ECE-308', 'ECE-319', 'BS-EE'],
-                name: 'Quick EE Path',
                 color: '#8B5CF6'
               });
             }
@@ -1897,6 +1892,54 @@ const getNodeSize = (course) => {
   if (course.type === 'notable' || course.type === 'gateway') return 26;
   return 20;
 };
+
+function clampNumber(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+/** Default zoom on first paint; wheel allows ~0.3–3. Higher = more zoomed in at load. */
+const INITIAL_SKILL_TREE_ZOOM = 1.06;
+
+/** Default pan so canvas center is viewport-centered at `zoom` (SVG xMidYMid meet + translate/scale origin top-left). */
+function getInitialMapPanZoom(viewportW, viewportH, canvasW, canvasH, zoom) {
+  if (viewportW < 16 || viewportH < 16) {
+    return { pan: { x: 0, y: 0 }, zoom };
+  }
+  const s = Math.min(viewportW / canvasW, viewportH / canvasH);
+  const offsetX = (viewportW - canvasW * s) / 2;
+  const offsetY = (viewportH - canvasH * s) / 2;
+  const cx = canvasW / 2;
+  const cy = canvasH / 2;
+  return {
+    pan: {
+      x: viewportW / 2 - (offsetX + cx * s) * zoom,
+      y: viewportH / 2 - (offsetY + cy * s) * zoom
+    },
+    zoom
+  };
+}
+
+/**
+ * Pan (px) for translate(pan) scale(zoom) with transform-origin 0 0, so viewBox point (cx,cy) lands at container center.
+ * Matches default SVG preserveAspectRatio xMidYMid meet inside a full-size map layer.
+ */
+function computePanToCenterViewBoxPoint(containerEl, canvasW, canvasH, cx, cy, zoom) {
+  if (!containerEl || containerEl.clientWidth < 16 || containerEl.clientHeight < 16) {
+    return {
+      x: (canvasW / 2 - cx) * zoom,
+      y: (canvasH / 2 - cy) * zoom
+    };
+  }
+  const W = containerEl.clientWidth;
+  const H = containerEl.clientHeight;
+  const s = Math.min(W / canvasW, H / canvasH);
+  const offsetX = (W - canvasW * s) / 2;
+  const offsetY = (H - canvasH * s) / 2;
+  return {
+    x: W / 2 - (offsetX + cx * s) * zoom,
+    y: H / 2 - (offsetY + cy * s) * zoom
+  };
+}
 
 // Wrap title into lines (max chars per line at word boundaries) so full title is visible without truncation
 const wrapTitleLines = (title, maxCharsPerLine = 28) => {
@@ -2053,6 +2096,20 @@ const Connection = ({ from, to, isActive, color, fromRadius = 24, toRadius = 24 
 // When decisionCoachOpen is true: fixed height so it doesn't overlap the coach; only content below the hairline scrolls.
 // When false: original behavior (whole panel scrollable, max-h-[calc(100vh-120px)]).
 const CoursePanel = ({ course, completedCourses, onToggleComplete, onClose, decisionCoachOpen = false }) => {
+  const [panelEntered, setPanelEntered] = useState(false);
+
+  useEffect(() => {
+    if (!course) {
+      setPanelEntered(false);
+      return undefined;
+    }
+    setPanelEntered(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setPanelEntered(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [course?.id]);
+
   if (!course) return null;
   
   const nodeColor = getNodeColor(course);
@@ -2154,13 +2211,18 @@ const CoursePanel = ({ course, completedCourses, onToggleComplete, onClose, deci
     </div>
   );
 
-  // Single layout for both states; max-height animates for smooth transition
+  // Single layout for both states; max-height + slide/fade when opening or switching course
   return (
     <div
+      key={course.id}
       className="fixed right-6 top-6 w-[357px] backdrop-blur-[10px] bg-white/50 border border-black/20 rounded-[5px] shadow-card flex flex-col overflow-hidden z-[100]"
       style={{
         maxHeight: decisionCoachOpen ? maxHeightWhenCoachOpen : maxHeightWhenCoachClosed,
-        transition: 'max-height 0.3s ease-in-out'
+        opacity: panelEntered ? 1 : 0,
+        transform: panelEntered ? 'translateX(0)' : 'translateX(20px)',
+        pointerEvents: panelEntered ? 'auto' : 'none',
+        transition:
+          'max-height 0.3s ease-in-out, opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1), transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)'
       }}
     >
       <button onClick={onClose} className="absolute right-3 top-3 bg-transparent border-none text-gray-400 hover:text-black text-2xl cursor-pointer leading-none z-10">
@@ -2171,6 +2233,38 @@ const CoursePanel = ({ course, completedCourses, onToggleComplete, onClose, deci
     </div>
   );
 };
+
+// Resolve advisor/chat path ids to keys present in nodePositions (handles spacing / case drift).
+function resolveRawCourseIdToMapKey(raw, positions) {
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim();
+  if (positions[s]) return s;
+  const upper = s.toUpperCase();
+  if (positions[upper]) return upper;
+  const dashed = upper.replace(/\s+/g, '-');
+  if (positions[dashed]) return dashed;
+  const m = s.match(/^([A-Za-z]{2,4})[-\s]?(\d{3})$/);
+  if (m) {
+    const guess = `${m[1].toUpperCase()}-${m[2]}`;
+    if (positions[guess]) return guess;
+  }
+  const course = COURSES.find((c) => c.id === s || c.id === dashed || c.id === upper);
+  if (course && positions[course.id]) return course.id;
+  return null;
+}
+
+function uniqueResolvedCourseIds(rawIds, positions) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of rawIds) {
+    const id = resolveRawCourseIdToMapKey(raw, positions);
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
+}
 
 // ============================================================================
 // MAIN COMPONENT
@@ -2185,10 +2279,70 @@ const IllinoisTechSkillTree = () => {
   const [chatSuggestedPath, setChatSuggestedPath] = useState(null); // Path suggested by AI chatbot
   const [prerequisiteChain, setPrerequisiteChain] = useState([]); // Courses needed to unlock selected course
   const [decisionCoachOpen, setDecisionCoachOpen] = useState(false); // When true, course panel uses fixed height + scrollable body
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(0.45);
+  const [pan, setPan] = useState(() => {
+    if (typeof window === 'undefined') return { x: 0, y: 0 };
+    return getInitialMapPanZoom(window.innerWidth, window.innerHeight, 2800, 2800, INITIAL_SKILL_TREE_ZOOM).pan;
+  });
+  const [zoom, setZoom] = useState(INITIAL_SKILL_TREE_ZOOM);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const treeContainerRef = useRef(null);
+  const mapTransformElRef = useRef(null);
+  const mapWaaRef = useRef(null);
+  const skipDomTransformSyncRef = useRef(false);
+  const nodePositionsRef = useRef({});
+  const panZoomRef = useRef({ pan: { x: 0, y: 0 }, zoom: INITIAL_SKILL_TREE_ZOOM });
+  panZoomRef.current = { pan, zoom };
+
+  const stopChatZoomAnimation = useCallback(() => {
+    if (mapWaaRef.current) {
+      try {
+        mapWaaRef.current.cancel();
+      } catch (_) {
+        /* ignore */
+      }
+      mapWaaRef.current = null;
+    }
+    skipDomTransformSyncRef.current = false;
+    const el = mapTransformElRef.current;
+    if (el) {
+      const { pan: p, zoom: z } = panZoomRef.current;
+      el.style.transform = `translate(${p.x}px, ${p.y}px) scale(${z})`;
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = mapTransformElRef.current;
+    if (!el || skipDomTransformSyncRef.current) return;
+    el.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
+  }, [pan, zoom]);
+
+  // Non-passive wheel: React's onWheel is often passive, so preventDefault does nothing and the browser won't let us zoom the map.
+  useEffect(() => {
+    const el = treeContainerRef.current;
+    if (!el) return undefined;
+
+    const onWheel = (e) => {
+      e.preventDefault();
+      stopChatZoomAnimation();
+      const { pan: p, zoom: z0 } = panZoomRef.current;
+      const delta = e.deltaY > 0 ? 0.97 : 1.03;
+      const z1 = Math.max(0.3, Math.min(3, z0 * delta));
+      if (Math.abs(z1 - z0) < 1e-6) return;
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const ratio = z1 / z0;
+      setPan({
+        x: mx * (1 - ratio) + p.x * ratio,
+        y: my * (1 - ratio) + p.y * ratio
+      });
+      setZoom(z1);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [stopChatZoomAnimation]);
   
   // Canvas dimensions - larger for full catalog
   const canvasWidth = 2800;
@@ -2197,12 +2351,14 @@ const IllinoisTechSkillTree = () => {
   const centerY = canvasHeight / 2;
   const ringSpacing = 180; // Increased significantly for better spacing
   
-  // Function to pan to a specific position
+  // Function to pan to a specific position (instant)
   const panToPosition = useCallback((pos) => {
-    const targetX = (canvasWidth / 2 - pos.x) * zoom;
-    const targetY = (canvasHeight / 2 - pos.y) * zoom;
-    setPan({ x: targetX, y: targetY });
-  }, [canvasWidth, canvasHeight, zoom]);
+    stopChatZoomAnimation();
+    const containerEl = mapTransformElRef.current?.parentElement ?? null;
+    setPan(
+      computePanToCenterViewBoxPoint(containerEl, canvasWidth, canvasHeight, pos.x, pos.y, zoom)
+    );
+  }, [canvasWidth, canvasHeight, zoom, stopChatZoomAnimation]);
   
   // Get courses on the selected major pathway OR chat suggested path
   const pathwayCourses = useMemo(() => {
@@ -2223,9 +2379,10 @@ const IllinoisTechSkillTree = () => {
   
   // Function to clear all highlighted paths
   const clearAllPaths = useCallback(() => {
+    stopChatZoomAnimation();
     setSelectedMajor(null);
     setChatSuggestedPath(null);
-  }, []);
+  }, [stopChatZoomAnimation]);
   
   // Build reverse mapping: course -> courses it unlocks (has it as prerequisite)
   const unlocksMap = useMemo(() => {
@@ -2295,6 +2452,146 @@ const IllinoisTechSkillTree = () => {
     
     return positions;
   }, [centerX, centerY, ringSpacing]);
+
+  nodePositionsRef.current = nodePositions;
+
+  // Web Animations API on the map div — React no longer sets inline transform (layout effect does), so WAAPI is not overwritten each render.
+  const focusMapOnCourseIds = useCallback(
+    (courseIds) => {
+      const positions = nodePositionsRef.current;
+      const ids = uniqueResolvedCourseIds(courseIds, positions);
+      if (!ids.length) return;
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      ids.forEach((id) => {
+        const p = positions[id];
+        const course = COURSES.find((c) => c.id === id);
+        const pad = (course ? getNodeSize(course) : 24) + 64;
+        minX = Math.min(minX, p.x - pad);
+        minY = Math.min(minY, p.y - pad);
+        maxX = Math.max(maxX, p.x + pad);
+        maxY = Math.max(maxY, p.y + pad);
+      });
+
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const bw = Math.max(maxX - minX, 140);
+      const bh = Math.max(maxY - minY, 140);
+
+      const fit = 0.62;
+      let targetZoom = Math.min(
+        (fit * canvasWidth) / bw,
+        (fit * canvasHeight) / bh
+      );
+      targetZoom = clampNumber(targetZoom, 0.32, 2.85);
+      const z0 = panZoomRef.current.zoom;
+      targetZoom = Math.max(targetZoom, 1.05, Math.min(2.65, z0 * 1.35));
+
+      const containerEl = mapTransformElRef.current?.parentElement ?? null;
+      const targetPan = computePanToCenterViewBoxPoint(
+        containerEl,
+        canvasWidth,
+        canvasHeight,
+        cx,
+        cy,
+        targetZoom
+      );
+
+      stopChatZoomAnimation();
+
+      const el = mapTransformElRef.current;
+      const fromPan = { ...panZoomRef.current.pan };
+      const fromZoom = panZoomRef.current.zoom;
+      const fromT = `translate(${fromPan.x}px, ${fromPan.y}px) scale(${fromZoom})`;
+      const toT = `translate(${targetPan.x}px, ${targetPan.y}px) scale(${targetZoom})`;
+
+      if (el && typeof el.animate === 'function') {
+        try {
+          skipDomTransformSyncRef.current = true;
+          el.style.transform = fromT;
+          const anim = el.animate(
+            [{ transform: fromT }, { transform: toT }],
+            { duration: 880, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }
+          );
+          mapWaaRef.current = anim;
+          anim.onfinish = () => {
+            try {
+              if (typeof anim.commitStyles === 'function') anim.commitStyles();
+            } catch (_) {
+              /* Safari */
+            }
+            try {
+              anim.cancel();
+            } catch (_) {
+              /* ignore */
+            }
+            mapWaaRef.current = null;
+            skipDomTransformSyncRef.current = false;
+            setPan({ x: targetPan.x, y: targetPan.y });
+            setZoom(targetZoom);
+          };
+          return;
+        } catch (_) {
+          skipDomTransformSyncRef.current = false;
+        }
+      }
+
+      setPan(targetPan);
+      setZoom(targetZoom);
+    },
+    [canvasWidth, canvasHeight, stopChatZoomAnimation]
+  );
+
+  const handleAdvisorFocusCourse = useCallback(
+    (course) => {
+      if (!course || course.type === 'start') return;
+      setSelectedCourse(course);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          focusMapOnCourseIds([course.id]);
+        });
+      });
+    },
+    [focusMapOnCourseIds]
+  );
+
+  const handleChatSuggestedPath = useCallback(
+    (path) => {
+      if (!path || !Array.isArray(path.courses) || path.courses.length === 0) {
+        stopChatZoomAnimation();
+        setChatSuggestedPath(null);
+        return;
+      }
+      const positions = nodePositionsRef.current;
+      const resolved = uniqueResolvedCourseIds(path.courses, positions);
+      if (!resolved.length) {
+        stopChatZoomAnimation();
+        setChatSuggestedPath(null);
+        return;
+      }
+      stopChatZoomAnimation();
+      setChatSuggestedPath({
+        courses: resolved,
+        color: path.color ?? '#00FF88'
+      });
+    },
+    [stopChatZoomAnimation]
+  );
+
+  useLayoutEffect(() => {
+    if (!chatSuggestedPath?.courses?.length) {
+      stopChatZoomAnimation();
+      return;
+    }
+    focusMapOnCourseIds(chatSuggestedPath.courses);
+  }, [chatSuggestedPath, focusMapOnCourseIds, stopChatZoomAnimation]);
+
+  useEffect(() => {
+    return () => stopChatZoomAnimation();
+  }, [stopChatZoomAnimation]);
   
   // Always show all courses; catalog filter only affects which nodes get highlighted
   const visibleCourses = useMemo(() => COURSES, []);
@@ -2408,6 +2705,7 @@ const IllinoisTechSkillTree = () => {
   
   const handleMouseDown = (e) => {
     if (e.target.closest('.skill-node')) return;
+    stopChatZoomAnimation();
     setIsDragging(true);
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
   };
@@ -2418,13 +2716,6 @@ const IllinoisTechSkillTree = () => {
   };
   
   const handleMouseUp = () => setIsDragging(false);
-  
-  const handleWheel = (e) => {
-    e.preventDefault();
-    // Smaller per-wheel step = less sensitive zoom
-    const delta = e.deltaY > 0 ? 0.97 : 1.03;
-    setZoom(z => Math.max(0.3, Math.min(3, z * delta)));
-  };
   
   // Progress stats
   const totalCredits = COURSES.filter(c => c.type !== 'start').reduce((sum, c) => sum + c.credits, 0);
@@ -2461,21 +2752,25 @@ const IllinoisTechSkillTree = () => {
       
       {/* Main SVG Canvas - only this area zooms/pans; fixed behind overlays */}
       <div
+        ref={treeContainerRef}
         className="tree-container fixed inset-0 z-0"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
       >
+        <div
+          ref={mapTransformElRef}
+          className="w-full h-full"
+          style={{
+            transformOrigin: '0 0'
+          }}
+        >
         <svg
           width="100%"
           height="100%"
           viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: 'center center'
-          }}
+          data-skill-tree-map="waapi-v2"
         >
           {/* Pathway highlight connections - glowing lines for selected major; each segment uses the from-node color */}
           {selectedMajor && MAJOR_PATHWAYS[selectedMajor] && (
@@ -2486,7 +2781,13 @@ const IllinoisTechSkillTree = () => {
                 const toPos = nodePositions[nextCourseId];
                 if (!fromPos || !toPos) return null;
                 const fromCourse = COURSES.find(c => c.id === courseId);
-                const pathColor = fromCourse ? getNodeColor(fromCourse) : MAJOR_PATHWAYS[selectedMajor].color;
+                const toCourse = COURSES.find(c => c.id === nextCourseId);
+                const pathColor =
+                  fromCourse?.type === 'start' && toCourse
+                    ? getNodeColor(toCourse)
+                    : fromCourse
+                      ? getNodeColor(fromCourse)
+                      : MAJOR_PATHWAYS[selectedMajor].color;
                 return (
                   <g key={`path-${courseId}-${nextCourseId}`}>
                     <line x1={fromPos.x} y1={fromPos.y} x2={toPos.x} y2={toPos.y} stroke={pathColor} strokeWidth={12} opacity={0.15} style={{ filter: 'blur(8px)' }} />
@@ -2506,29 +2807,26 @@ const IllinoisTechSkillTree = () => {
                 const toPos = nodePositions[nextCourseId];
                 if (!fromPos || !toPos) return null;
                 const fromCourse = COURSES.find(c => c.id === courseId);
-                const pathColor = fromCourse ? getNodeColor(fromCourse) : (chatSuggestedPath.color || '#00FF88');
+                const toCourse = COURSES.find(c => c.id === nextCourseId);
+                const pathColor =
+                  fromCourse?.type === 'start' && toCourse
+                    ? getNodeColor(toCourse)
+                    : fromCourse
+                      ? getNodeColor(fromCourse)
+                      : (chatSuggestedPath.color || '#00FF88');
                 return (
-                  <g key={`chat-path-${courseId}-${nextCourseId}`}>
-                    <line x1={fromPos.x} y1={fromPos.y} x2={toPos.x} y2={toPos.y} stroke={pathColor} strokeWidth={18} opacity={0.2} style={{ filter: 'blur(12px)' }} />
-                    <line x1={fromPos.x} y1={fromPos.y} x2={toPos.x} y2={toPos.y} stroke={pathColor} strokeWidth={8} opacity={0.4} style={{ filter: 'blur(4px)' }} />
-                    <line x1={fromPos.x} y1={fromPos.y} x2={toPos.x} y2={toPos.y} stroke={pathColor} strokeWidth={4} opacity={0.9} />
-                  </g>
+                  <line
+                    key={`chat-path-${courseId}-${nextCourseId}`}
+                    x1={fromPos.x}
+                    y1={fromPos.y}
+                    x2={toPos.x}
+                    y2={toPos.y}
+                    stroke={pathColor}
+                    strokeWidth={4}
+                    opacity={0.9}
+                  />
                 );
               })}
-              {/* Path label at center */}
-              {chatSuggestedPath.name && (
-                <text
-                  x={centerX}
-                  y={80}
-                  textAnchor="middle"
-                  fill={chatSuggestedPath.color || '#00FF88'}
-                  fontSize={16}
-                  fontWeight="bold"
-                  fontFamily="'Rajdhani', sans-serif"
-                >
-                  AI Suggested: {chatSuggestedPath.name}
-                </text>
-              )}
             </>
           )}
           
@@ -2722,6 +3020,7 @@ const IllinoisTechSkillTree = () => {
             );
           })()}
         </svg>
+        </div>
       </div>
       
       {/* Fixed overlays - not affected by zoom/pan */}
@@ -2847,9 +3146,10 @@ const IllinoisTechSkillTree = () => {
           courses={COURSES}
           pathways={MAJOR_PATHWAYS}
           careerOutcomes={CAREER_OUTCOMES}
-          onSuggestPath={setChatSuggestedPath}
+          onSuggestPath={handleChatSuggestedPath}
           onClearPaths={clearAllPaths}
           onOpenChange={setDecisionCoachOpen}
+          onFocusCourse={handleAdvisorFocusCourse}
         />
       ) : (
         <CourseAdvisorChat
@@ -2859,7 +3159,7 @@ const IllinoisTechSkillTree = () => {
           courses={COURSES}
           pathways={MAJOR_PATHWAYS}
           careerOutcomes={CAREER_OUTCOMES}
-          onSuggestPath={setChatSuggestedPath}
+          onSuggestPath={handleChatSuggestedPath}
           onClearPaths={clearAllPaths}
         />
       )}

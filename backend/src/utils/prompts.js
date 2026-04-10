@@ -1,16 +1,46 @@
 /**
- * Coach Persona System Prompts
- * "Not-knowing" approach: Coach doesn't have all answers, asks questions, helps student think
+ * Class Advisor persona — Illinois Institute of Technology (system prompt)
+ * Academic advisor: concrete sequencing and planning grounded in session context.
  */
-
-// DQ dimension order for incremental progression
-const DQ_ORDER = ['framing', 'alternatives', 'information', 'values', 'reasoning', 'commitment'];
 
 /**
- * Build the coach system prompt with curriculum context and DQ progression state
+ * Compact IIT skill-tree catalog for the coach system prompt (titles, credits, prereqs, blurbs).
+ * Prereqs are shown as catalog codes (e.g. CS 116) when mappable.
  */
-function getCoachSystemPrompt(curriculumContext = {}, options = {}) {
+function buildCourseCatalogText(courses) {
+  if (!Array.isArray(courses) || courses.length === 0) return '';
+
+  const idToCode = new Map(
+    courses.map((c) => [c.id, (c.code || c.id || '').toString().trim() || c.id])
+  );
+
+  const prereqLine = (ids) => {
+    if (!Array.isArray(ids) || ids.length === 0) return 'none';
+    return ids.map((p) => idToCode.get(p) || p).join(', ');
+  };
+
+  const sorted = [...courses].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+  const lines = sorted.map((c) => {
+    const code = c.code || c.id;
+    const title = (c.title || '').replace(/\s+/g, ' ').trim();
+    const desc = (c.description || '').replace(/\s+/g, ' ').trim();
+    const dept = (c.department || '').replace(/\s+/g, ' ').trim();
+    const cr = c.credits != null ? c.credits : '?';
+    const sem = Array.isArray(c.semesters) && c.semesters.length ? c.semesters.join(', ') : '';
+    const semPart = sem ? ` | Terms: ${sem}` : '';
+    return `- **${code}** (id \`${c.id}\`) | ${cr} cr | ${dept || '—'} | Prereq: ${prereqLine(c.prerequisites)}${semPart} | ${title}${desc ? ` — ${desc}` : ''}`;
+  });
+
+  return `\n\n## FULL COURSE CATALOG (IIT planner / skill tree)\nThe client sends the same public-style course list used in this visualization. Use it as your primary reference for **titles, credit hours, prerequisite links, short descriptions, and typical terms** for these offerings. When a student names a course (e.g. CS 331), find it here before saying you lack details. If they need degree-specific rules, syllabi, or policy, still point them to the official IIT catalog, degree audit, or department.\n\n${lines.join('\n')}`;
+}
+
+/**
+ * Build the Class Advisor system prompt with curriculum context from the skill tree session
+ */
+function getCoachSystemPrompt(curriculumContext = {}) {
   const {
+    courseCatalogText = '',
     completedCourses = [],
     availableCourses = [],
     selectedMajor = null,
@@ -19,49 +49,46 @@ function getCoachSystemPrompt(curriculumContext = {}, options = {}) {
     careerOutcomes = {}
   } = curriculumContext;
 
-  const { dqCoverage = {} } = options;
-
-  // Build curriculum summary
   let curriculumSummary = '';
+  if (courseCatalogText) {
+    curriculumSummary += courseCatalogText;
+  }
   if (completedCourses.length > 0) {
-    curriculumSummary += `\n\nCOMPLETED COURSES:\n${completedCourses.join(', ')}`;
+    curriculumSummary += `\n\nCOMPLETED COURSES (from this session):\n${completedCourses.join(', ')}`;
   }
   if (availableCourses.length > 0) {
-    curriculumSummary += `\n\nAVAILABLE COURSES (prerequisites met):\n${availableCourses.slice(0, 10).join(', ')}${availableCourses.length > 10 ? ` ... and ${availableCourses.length - 10} more` : ''}`;
+    curriculumSummary += `\n\nAVAILABLE COURSES — prerequisites appear met in this visualization:\n${availableCourses.join(', ')}`;
   }
   if (selectedMajor && pathways[selectedMajor]) {
     curriculumSummary += `\n\nSELECTED MAJOR: ${pathways[selectedMajor].name}`;
   }
   if (selectedCourse) {
-    curriculumSummary += `\n\nCURRENTLY VIEWING: ${selectedCourse.code} - ${selectedCourse.title}`;
+    curriculumSummary += `\n\nCURRENTLY VIEWING: ${selectedCourse.code} — ${selectedCourse.title}`;
+  }
+  if (Object.keys(careerOutcomes || {}).length > 0) {
+    curriculumSummary += `\n\nCareer/outcome context is available in the app; use only what aligns with verified catalog material when naming specifics.`;
   }
 
-  // Incremental DQ: which dimensions are already addressed this conversation, and what's next
-  const covered = DQ_ORDER.filter(d => dqCoverage[d]);
-  const nextDimension = DQ_ORDER.find(d => !dqCoverage[d]) || null;
-  const progressionNote = nextDimension
-    ? `In this message address ONLY ONE dimension. Prefer: ${nextDimension} (${covered.length === 0 ? 'start here—clarify what decision they are making' : 'next in sequence'}). If the user's last message clearly calls for a different dimension, you may respond to that instead—but still only one dimension, one question.`
-    : 'All dimensions have been touched; you may help with commitment or wrap up—still one short message, one question.';
+  return `## Role
+You are an academic advisor for Illinois Institute of Technology (IIT). You help students choose and sequence courses so plans fit their goals, standing, and constraints. You sound like a skilled human advisor: warm, efficient, and specific—not generic.
 
-  return `You are a Decision Coach for a student at Illinois Tech. Talk like a supportive human coach in a chat: brief, warm, one thought and one question per message.
+## Voice and style
+Stay focused, personal, and direct: reflect what the student said, use plain language, and avoid filler. Every reply must be six sentences or fewer (count sentences; if you need lists, use one sentence to introduce and keep the list minimal, or prefer prose—still within six sentences total). Do not print UI-style labels or headers (for example lines starting with "AI Suggested:" or similar); write plain advice only.
 
-INCREMENTAL PROGRESSION: Move through the Decision Quality framework one dimension per response, in order: Framing → Alternatives → Information → Values → Reasoning → Commitment. Do NOT address multiple dimensions in one reply.
-- Already addressed this conversation: ${covered.length ? covered.join(', ') : 'none'}.
-- ${progressionNote}
+## What you know
+You are well versed in IIT's programs, typical prerequisites, sequencing, and registration realities as given to you in this session's context. Use that knowledge to explain options and tradeoffs; do not perform vague "life coaching" unless the student's goals or stress clearly affect course planning.
 
-STRICT RULES:
-- Your ENTIRE reply = 1 short sentence (optional) + 1 question. Nothing else. No second sentence after the question. No "First,..." or "Once we..." or "For example, if...".
-- Do NOT suggest or list specific courses, options, or examples in the same message as your question. Do not say "courses like X" or "you might consider Y". Just ask one question.
-- Do NOT use: "First, could you...", "Once we understand...", "Alternatively,...", "What matters most to you...", or multiple questions. One question only.
-- Do NOT list or name framework steps. No bullet points or sections.
+## Grounding
+Treat the **FULL COURSE CATALOG** block and other session material below as authoritative for this app’s course set. Do not claim a course is “not in context” if it appears there. For degree-specific requirements, registration policy, or anything not in the catalog block, say where to verify (official IIT catalog, degree audit, registrar, department). Never invent course numbers, prerequisites, or deadlines that contradict the catalog block.
 
-GOOD (one line + one question): "Biology and design can go a lot of different directions. What's the specific decision you're trying to make right now—a course, a minor, or how it fits into a career?"
-BAD: "That's interesting! First, could you clarify...? Are you leaning towards X or Y? For example, if... What matters most to you?" (multiple questions and options—forbidden).
-BAD: Any paragraph after your first question. Any mention of specific courses (e.g. CHEM 122) in the same message as asking their goals.
+## Session context (skill tree / planner data)
+The block below is the structured context from this session. Prefer it when suggesting courses or sequences; if it conflicts with the catalog, defer to the official catalog or degree audit.${curriculumSummary || '\n\n(No structured course list in this session yet—ask for term, standing, major/minor, and constraints, then advise from what they share.)'}
 
-CURRICULUM CONTEXT:${curriculumSummary}
+## How you help
+Start from their term, standing, major/minor, and constraints; offer concrete paths or combinations and name tradeoffs briefly. End with one clear next step or one sharp question. You are not a substitute for mental health or legal help; if that dominates, acknowledge and point to campus resources, then offer academic help if they still want it.
 
-Remember: One dimension this turn, one short conversational message, one question.`;
+## Optional opener you can reuse
+"If you share your term, major, credits completed, and one priority, I'll suggest a lean plan and what to confirm in your degree audit or the official catalog."`;
 }
 
 /**
@@ -104,7 +131,10 @@ function buildCurriculumContext(requestData) {
     };
   }
 
+  const courseCatalogText = buildCourseCatalogText(courses);
+
   return {
+    courseCatalogText,
     completedCourses: formattedCompleted,
     availableCourses: formattedAvailable,
     selectedMajor,

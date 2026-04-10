@@ -62,7 +62,7 @@ async function processChatTurn(params) {
   const turnsUsed = Math.floor(conversationHistory.length / 2) + 1;
 
   if (mode === 'coach') {
-    const systemPrompt = getCoachSystemPrompt(curriculumContext, { dqCoverage });
+    const systemPrompt = getCoachSystemPrompt(curriculumContext);
     const coachResponse = await getCoachResponse(
       userMessage,
       systemPrompt,
@@ -103,7 +103,7 @@ async function processChatTurn(params) {
       response.sessionSummary = {
         totalTurns: turnsUsed,
         dqAreasCompleted: DQ_DIMENSIONS.filter(d => newCoverage[d]),
-        feedback: 'The coach covered all key areas of Decision Quality.'
+        feedback: 'The advisor covered key areas of academic planning.'
       };
     }
     return response;

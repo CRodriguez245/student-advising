@@ -27,11 +27,11 @@ app.get('/', (req, res) => {
   res.type('html').send(`
     <!DOCTYPE html>
     <html>
-      <head><title>Decision Coach API</title></head>
+      <head><title>Class Advisor API</title></head>
       <body style="font-family: system-ui; padding: 2rem; max-width: 40rem;">
-        <h1>Decision Coach API</h1>
+        <h1>Class Advisor API</h1>
         <p>This is the backend API. The Skill Tree app runs on a different port.</p>
-        <p><strong>Open the app:</strong> <a href="http://localhost:3000">http://localhost:3000</a></p>
+        <p><strong>Open the Skill Tree app:</strong> <a href="http://localhost:3003">http://localhost:3003</a></p>
         <p><strong>Endpoints:</strong> <code>GET /health</code>, <code>POST /chat</code></p>
       </body>
     </html>
@@ -45,6 +45,6 @@ app.get('/health', (req, res) => {
 
 // Start server
 app.listen(port, () => {
-  console.log(`🚀 Illinois Tech Decision Coach backend running on http://localhost:${port}`);
+  console.log(`🚀 Illinois Tech Class Advisor backend running on http://localhost:${port}`);
   console.log(`📡 Health check: http://localhost:${port}/health`);
 });

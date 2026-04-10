@@ -12,7 +12,7 @@ Edits only show up if the app is loading the **latest** code. Use one of these w
    ```bash
    npm start
    ```
-2. Open the URL shown (e.g. `http://localhost:3000`) in your browser.
+2. Open the URL shown (e.g. `http://localhost:3003`) in your browser.
 3. Leave this terminal running. Every time you save a file, the app will reload with your changes. No manual build or refresh needed.
 
 **Check:** Under the title you should see **“Development — changes reload live”**. That means you’re on the dev server and edits will show up on save.

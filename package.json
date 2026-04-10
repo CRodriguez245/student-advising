@@ -4,9 +4,9 @@
   "description": "Illinois Tech Academic Skill Tree - Course Planning Visualization",
   "private": true,
   "scripts": {
-    "start": "react-scripts start",
+    "start": "PORT=3003 react-scripts start",
     "backend": "cd backend && npm run start",
-    "dev": "react-scripts start",
+    "dev": "PORT=3003 react-scripts start",
     "prebuild": "node scripts/write-build-env.js",
     "build": "react-scripts build",
     "build:serve": "npm run build && npx serve -s build",

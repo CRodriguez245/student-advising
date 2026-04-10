@@ -105,7 +105,7 @@ router.post('/', async (req, res) => {
 
     if (mode === 'coach') {
       // MODE 1: AI Coach helps student (pass DQ coverage so coach progresses incrementally)
-      const systemPrompt = getCoachSystemPrompt(curriculumContext, { dqCoverage: session.dqCoverage });
+      const systemPrompt = getCoachSystemPrompt(curriculumContext);
       const coachResponse = await getCoachResponse(
         userMessage,
         systemPrompt,
@@ -249,7 +249,7 @@ router.post('/', async (req, res) => {
         totalTurns: session.turnsUsed,
         dqAreasCompleted: Object.keys(session.dqCoverage).filter(k => session.dqCoverage[k]),
         feedback: mode === 'coach' 
-          ? 'The coach covered all key areas of Decision Quality.'
+          ? 'The advisor covered key areas of academic planning.'
           : 'You covered all key areas of Decision Quality in your coaching.'
       };
     }

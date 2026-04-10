@@ -24,7 +24,7 @@ npm start
 
 This will:
 - Start the React development server
-- Open your browser to `http://localhost:3000`
+- Open your browser to `http://localhost:3003`
 - Enable hot-reload (changes update automatically)
 
 **You should see:**
@@ -33,15 +33,15 @@ Compiled successfully!
 
 You can now view illinois-tech-skill-tree in the browser.
 
-  Local:            http://localhost:3000
-  On Your Network:  http://192.168.x.x:3000
+  Local:            http://localhost:3003
+  On Your Network:  http://192.168.x.x:3003
 ```
 
 ## Step 3: View the App
 
 The app should automatically open in your browser. If not, navigate to:
 ```
-http://localhost:3000
+http://localhost:3003
 ```
 
 ## Troubleshooting
@@ -53,10 +53,10 @@ You need to install Node.js first:
 3. Restart your terminal
 4. Try `npm install` again
 
-### "Port 3000 already in use"
+### "Port 3003 already in use"
 Use a different port:
 ```bash
-PORT=3001 npm start
+PORT=3004 npx react-scripts start
 ```
 
 ### "Module not found" errors

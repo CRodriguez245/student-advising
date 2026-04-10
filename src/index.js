@@ -4,8 +4,4 @@ import './index.css';
 import IllinoisTechSkillTree from './illinois-tech-full-catalog-skill-tree';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <IllinoisTechSkillTree />
-  </React.StrictMode>
-);
+root.render(<IllinoisTechSkillTree />);

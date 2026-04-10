@@ -34,12 +34,12 @@ Compiled successfully!
 
 You can now view illinois-tech-skill-tree in the browser.
 
-  Local:            http://localhost:3000
+  Local:            http://localhost:3003
 ```
 
 The browser should open automatically. If not, manually go to:
 ```
-http://localhost:3000
+http://localhost:3003
 ```
 
 ## Common Issues
@@ -52,12 +52,12 @@ http://localhost:3000
 4. Restart Terminal
 5. Try again
 
-### Issue: "Port 3000 already in use"
+### Issue: "Port 3003 already in use"
 **Solution:** Use a different port
 ```bash
-PORT=3001 npm start
+PORT=3004 npx react-scripts start
 ```
-Then go to `http://localhost:3001`
+Then go to `http://localhost:3004`
 
 ### Issue: "Cannot find module 'react-scripts'"
 **Solution:** Dependencies not installed
@@ -92,7 +92,7 @@ npm start
 After running `npm start`, you should see:
 - ✅ Terminal shows "Compiled successfully!"
 - ✅ Browser opens automatically
-- ✅ URL is `http://localhost:3000`
+- ✅ URL is `http://localhost:3003`
 - ✅ You see the skill tree visualization
 
 ## Stop the Server
@@ -106,11 +106,11 @@ Press `Ctrl+C` in the terminal to stop the server.
 - [ ] In correct directory? (`pwd`)
 - [ ] Dependencies installed? (`ls node_modules`)
 - [ ] Server started? (`npm start`)
-- [ ] Browser at `http://localhost:3000`?
+- [ ] Browser at `http://localhost:3003`?
 
 ## Still Having Issues?
 
 1. Check Terminal output for error messages
 2. Check browser console (Cmd+Option+I → Console tab)
-3. Try a different port: `PORT=3001 npm start`
+3. Try a different port: `PORT=3004 npx react-scripts start`
 4. Try a different browser (Chrome, Firefox)

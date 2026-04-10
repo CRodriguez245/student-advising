@@ -14,7 +14,7 @@ npm install
 npm start
 ```
 
-The app will open at `http://localhost:3000`
+The app will open at `http://localhost:3003` (this repo pins the dev server to **3003** so it does not clash with other projects on 3000).
 
 ## Features
 
@@ -54,7 +54,7 @@ Advisor-DecisionCoach/
 
 ## Development
 
-- **Port**: 3000 (default React port)
+- **Port**: 3003 (set in `npm start` so it stays off 3000)
 - **Hot Reload**: Enabled automatically
 - **Build**: `npm run build` (creates production build in `/build`)
 
@@ -62,8 +62,8 @@ Advisor-DecisionCoach/
 
 ### Port Already in Use
 ```bash
-# Use a different port
-PORT=3001 npm start
+# Temporary override (macOS/Linux)
+PORT=3004 npx react-scripts start
 ```
 
 ### Module Not Found

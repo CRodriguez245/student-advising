@@ -991,6 +991,161 @@ const ORBIT_RINGS = [
 ];
 
 // ============================================================================
+// SIDEBAR CUSTOM SELECT (matches frosted pill UI; avoids native OS menu)
+// ============================================================================
+
+/**
+ * @param {Object} props
+ * @param {string} props.ariaLabel
+ * @param {string} [props.title]
+ * @param {string} props.value
+ * @param {(v: string) => void} props.onChange
+ * @param {string} props.placeholder - Shown when value is empty
+ * @param {{ value: string, label: string }} [props.clearOption] - First row (e.g. reset to catalog-wide)
+ * @param {{ heading: string, options: { value: string, label: string }[] }[]} [props.groups]
+ * @param {{ value: string, label: string }[]} [props.options] - Flat list (mutually exclusive with groups+clearOption pattern)
+ */
+const SidebarSelect = ({ ariaLabel, title, value, onChange, placeholder, clearOption, groups, options }) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const displayLabel = useMemo(() => {
+    const v = value ?? '';
+    if (clearOption && v === clearOption.value) return clearOption.label;
+    if (!v && clearOption) return clearOption.label;
+    if (options) {
+      const hit = options.find((o) => o.value === v);
+      return hit ? hit.label : placeholder;
+    }
+    if (groups) {
+      for (const g of groups) {
+        const hit = g.options.find((o) => o.value === v);
+        if (hit) return hit.label;
+      }
+    }
+    return placeholder;
+  }, [value, placeholder, clearOption, groups, options]);
+
+  const triggerRounded = open ? 'rounded-t-[20px] rounded-b-none border-b-0' : 'rounded-[20px]';
+
+  return (
+    <div className="relative" ref={wrapRef} style={{ borderRadius: 20 }}>
+      <button
+        type="button"
+        title={title}
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((o) => !o)}
+        className={`w-full backdrop-blur-[10px] bg-white/50 border border-black/20 cursor-pointer hover:bg-white/70 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/30 text-[#787878] text-left ${triggerRounded}`}
+        style={{ padding: '8px 32px 8px 16px', fontSize: 14 }}
+      >
+        {displayLabel}
+      </button>
+      <svg
+        className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#787878] pointer-events-none transition-transform ${open ? 'rotate-0' : 'rotate-180'}`}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+      </svg>
+      {open && (
+        <ul
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-[60] m-0 list-none bg-white/95 backdrop-blur-md border border-black/20 border-t-0 rounded-b-[20px] max-h-[min(280px,50vh)] overflow-y-auto px-0 py-1"
+        >
+          {clearOption && (
+            <li role="none">
+              <button
+                type="button"
+                role="option"
+                aria-selected={value === clearOption.value}
+                className={`w-full text-left px-4 py-2.5 text-sm border-b border-gray-100/80 hover:bg-gray-100/90 ${
+                  value === clearOption.value ? 'bg-gray-100 text-black font-medium' : 'text-[#787878]'
+                }`}
+                onClick={() => {
+                  onChange(clearOption.value);
+                  setOpen(false);
+                }}
+              >
+                {clearOption.label}
+              </button>
+            </li>
+          )}
+          {groups &&
+            groups.map((g) => (
+              <li key={g.heading} role="none" className="list-none">
+                <div className="px-4 pt-2.5 pb-1 text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wide">
+                  {g.heading}
+                </div>
+                <ul className="m-0 list-none p-0 pb-1">
+                  {g.options.map((opt) => (
+                    <li key={opt.value} role="none">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={value === opt.value}
+                        className={`w-full text-left px-4 py-2.5 text-sm pl-5 hover:bg-gray-100/90 border-b border-gray-50 last:border-0 ${
+                          value === opt.value ? 'bg-gray-100 text-black font-medium' : 'text-[#787878]'
+                        }`}
+                        onClick={() => {
+                          onChange(opt.value);
+                          setOpen(false);
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          {options &&
+            options.map((opt) => (
+              <li key={opt.value} role="none">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={value === opt.value}
+                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100/90 border-b border-gray-100/80 last:border-0 ${
+                    value === opt.value ? 'bg-gray-100 text-black font-medium' : 'text-[#787878]'
+                  }`}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                >
+                  {opt.label}
+                </button>
+              </li>
+            ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
 // COURSE SEARCH COMPONENT
 // ============================================================================
 
@@ -1042,7 +1197,7 @@ const CourseSearch = ({ courses, onSelectCourse, nodePositions, onPanTo, variant
   
   return (
     <div className={isPill ? 'relative w-full' : ''} style={!isPill ? { position: 'absolute', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 60, width: 320 } : {}}>
-      <div className={isPill ? 'backdrop-blur-[10px] bg-white/50 border border-black/20 shadow-input flex items-center gap-2 hover:bg-white/70 transition-colors' : ''}
+      <div className={isPill ? 'backdrop-blur-[10px] bg-white/50 border border-black/20 flex items-center gap-2 hover:bg-white/70 transition-colors' : ''}
         style={!isPill ? {
           display: 'flex', alignItems: 'center',
           background: '#0d0d14', border: '1px solid #333',
@@ -1073,7 +1228,7 @@ const CourseSearch = ({ courses, onSelectCourse, nodePositions, onPanTo, variant
       </div>
       
       {isOpen && filteredCourses.length > 0 && (
-        <div className={isPill ? 'absolute top-full left-0 right-0 mt-1 bg-white/95 backdrop-blur-md border border-black/20 border-t-0 rounded-b-[20px] shadow-card max-h-[300px] overflow-y-auto z-50' : ''}
+        <div className={isPill ? 'absolute top-full left-0 right-0 mt-1 bg-white/95 backdrop-blur-md border border-black/20 border-t-0 rounded-b-[20px] max-h-[300px] overflow-y-auto z-50' : ''}
           style={!isPill ? {
             background: '#0d0d14', border: '1px solid #333', borderTop: 'none',
             borderRadius: '0 0 12px 12px', maxHeight: 300, overflowY: 'auto'
@@ -1537,6 +1692,19 @@ When recommending courses, prioritize ones the student can actually take (prereq
       boxShadow: '0 8px 40px rgba(0, 0, 0, 0.5)',
       zIndex: 100
     }}>
+      <style>{`
+        @keyframes legacy-advisor-thinking-dot {
+          0%, 80%, 100% { opacity: 0.2; }
+          40% { opacity: 1; }
+        }
+        .legacy-advisor-thinking-dots span {
+          display: inline-block;
+          animation: legacy-advisor-thinking-dot 1.2s ease-in-out infinite;
+        }
+        .legacy-advisor-thinking-dots span:nth-child(1) { animation-delay: 0s; }
+        .legacy-advisor-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .legacy-advisor-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+      `}</style>
       {/* Header */}
       <div style={{
         padding: '16px 20px',
@@ -1602,14 +1770,25 @@ When recommending courses, prioritize ones the student can actually take (prereq
         
         {isLoading && (
           <div style={{ alignSelf: 'flex-start', maxWidth: '85%' }}>
-            <div style={{
-              padding: '10px 14px',
-              borderRadius: '16px 16px 16px 4px',
-              background: '#1e1e2e',
-              color: '#888',
-              fontSize: 13
-            }}>
-              <span style={{ animation: 'pulse 1.5s infinite' }}>Thinking...</span>
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: '16px 16px 16px 4px',
+                background: '#1e1e2e',
+                color: '#888',
+                fontSize: 13,
+                display: 'inline-flex',
+                alignItems: 'baseline'
+              }}
+              role="status"
+              aria-label="Advisor is thinking"
+            >
+              <span>Thinking</span>
+              <span className="legacy-advisor-thinking-dots" style={{ display: 'inline-flex', marginLeft: 1 }} aria-hidden="true">
+                <span>.</span>
+                <span>.</span>
+                <span>.</span>
+              </span>
             </div>
           </div>
         )}
@@ -1976,7 +2155,7 @@ const getCourseState = (course, completedCourses) => {
 // ============================================================================
 
 // Individual skill node with hover state
-const SkillNode = ({ course, position, state, onSelect, onHover, onHoverEnd, isSelected, scale, isOnPath, isUnlockedByHover, isInPrereqChain, isHoveredByParent = false, isInActiveCatalogFilter = false }) => {
+const SkillNode = ({ course, position, state, onSelect, onHover, onHoverEnd, isSelected, scale, isOnPath, isUnlockedByHover, isInPrereqChain, isHoveredByParent = false, isInActiveCatalogFilter = false, planTermDimmed = false, isAdvisedTermSpotlight = false }) => {
   const [isHovered, setIsHovered] = useState(false);
   const color = getNodeColor(course);
   const isKeystone = course.type === 'keystone';
@@ -1988,7 +2167,7 @@ const SkillNode = ({ course, position, state, onSelect, onHover, onHoverEnd, isS
   
   const effectiveHovered = isHovered || isHoveredByParent;
   // Active = primary color; inactive = pastel (catalog filter counts as active for highlight)
-  const isActive = effectiveHovered || isSelected || isUnlockedByHover || isInPrereqChain || isOnPath || isInActiveCatalogFilter;
+  const isActive = effectiveHovered || isSelected || isUnlockedByHover || isInPrereqChain || isOnPath || isInActiveCatalogFilter || isAdvisedTermSpotlight;
   const fillColor = isStart
     ? '#DDDDDD'
     : isActive
@@ -2014,6 +2193,7 @@ const SkillNode = ({ course, position, state, onSelect, onHover, onHoverEnd, isS
   };
   
   const nodeScale = effectiveHovered || isSelected ? 1.15 : 1;
+  const groupOpacity = planTermDimmed && !isSelected && !effectiveHovered ? 0.34 : 1;
 
   return (
     <g
@@ -2021,7 +2201,11 @@ const SkillNode = ({ course, position, state, onSelect, onHover, onHoverEnd, isS
       onClick={() => onSelect(course)}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      style={{ cursor: 'pointer', transition: 'transform 0.15s ease-out' }}
+      style={{
+        cursor: 'pointer',
+        transition: 'transform 0.15s ease-out, opacity 0.2s ease-out',
+        opacity: groupOpacity
+      }}
       className="skill-node"
     >
       {/* Main node shape - all circles, color in fill only (no colored stroke) */}
@@ -2266,6 +2450,9 @@ function uniqueResolvedCourseIds(rawIds, positions) {
   return out;
 }
 
+/** Option value for "highlight every course that appears in any term of the advised plan" */
+const ADVISING_PLAN_ALL_TERMS = '__all_planned__';
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -2277,6 +2464,9 @@ const IllinoisTechSkillTree = () => {
   const [activePathway, setActivePathway] = useState(null);
   const [selectedMajor, setSelectedMajor] = useState(null); // For suggested pathway highlighting
   const [chatSuggestedPath, setChatSuggestedPath] = useState(null); // Path suggested by AI chatbot
+  /** @type {{ terms: { label: string, courseIds: string[] }[], color?: string } | null} */
+  const [advisedPlan, setAdvisedPlan] = useState(null);
+  const [selectedAdvisedTerm, setSelectedAdvisedTerm] = useState(null);
   const [prerequisiteChain, setPrerequisiteChain] = useState([]); // Courses needed to unlock selected course
   const [decisionCoachOpen, setDecisionCoachOpen] = useState(false); // When true, course panel uses fixed height + scrollable body
   const [pan, setPan] = useState(() => {
@@ -2382,6 +2572,8 @@ const IllinoisTechSkillTree = () => {
     stopChatZoomAnimation();
     setSelectedMajor(null);
     setChatSuggestedPath(null);
+    setAdvisedPlan(null);
+    setSelectedAdvisedTerm(null);
   }, [stopChatZoomAnimation]);
   
   // Build reverse mapping: course -> courses it unlocks (has it as prerequisite)
@@ -2560,12 +2752,56 @@ const IllinoisTechSkillTree = () => {
 
   const handleChatSuggestedPath = useCallback(
     (path) => {
-      if (!path || !Array.isArray(path.courses) || path.courses.length === 0) {
+      if (!path) {
+        stopChatZoomAnimation();
+        setChatSuggestedPath(null);
+        setAdvisedPlan(null);
+        setSelectedAdvisedTerm(null);
+        return;
+      }
+
+      const positions = nodePositionsRef.current;
+
+      if (Array.isArray(path.terms) && path.terms.length > 0) {
+        const resolvedTerms = path.terms
+          .map((t) => {
+            const raw = t.course_ids || t.courseIds || t.courses || [];
+            const courseIds = uniqueResolvedCourseIds(raw, positions);
+            return { label: (t.label && String(t.label).trim()) || 'Term', courseIds };
+          })
+          .filter((t) => t.courseIds.length > 0);
+
+        if (resolvedTerms.length === 0) {
+          stopChatZoomAnimation();
+          setAdvisedPlan(null);
+          setSelectedAdvisedTerm(null);
+          setChatSuggestedPath(null);
+          return;
+        }
+
+        stopChatZoomAnimation();
+        setChatSuggestedPath(null);
+        setAdvisedPlan({
+          terms: resolvedTerms,
+          color: path.color ?? '#00FF88'
+        });
+        setSelectedAdvisedTerm(resolvedTerms[0].label);
+
+        const allIds = [...new Set(resolvedTerms.flatMap((t) => t.courseIds))];
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => focusMapOnCourseIds(['START', ...allIds]));
+        });
+        return;
+      }
+
+      setAdvisedPlan(null);
+      setSelectedAdvisedTerm(null);
+
+      if (!Array.isArray(path.courses) || path.courses.length === 0) {
         stopChatZoomAnimation();
         setChatSuggestedPath(null);
         return;
       }
-      const positions = nodePositionsRef.current;
       const resolved = uniqueResolvedCourseIds(path.courses, positions);
       if (!resolved.length) {
         stopChatZoomAnimation();
@@ -2578,16 +2814,13 @@ const IllinoisTechSkillTree = () => {
         color: path.color ?? '#00FF88'
       });
     },
-    [stopChatZoomAnimation]
+    [stopChatZoomAnimation, focusMapOnCourseIds]
   );
 
   useLayoutEffect(() => {
-    if (!chatSuggestedPath?.courses?.length) {
-      stopChatZoomAnimation();
-      return;
-    }
+    if (!chatSuggestedPath?.courses?.length) return;
     focusMapOnCourseIds(chatSuggestedPath.courses);
-  }, [chatSuggestedPath, focusMapOnCourseIds, stopChatZoomAnimation]);
+  }, [chatSuggestedPath, focusMapOnCourseIds]);
 
   useEffect(() => {
     return () => stopChatZoomAnimation();
@@ -2625,6 +2858,36 @@ const IllinoisTechSkillTree = () => {
     });
     return ids;
   }, [activePathway]);
+
+  const allAdvisedCourseIds = useMemo(() => {
+    if (!advisedPlan?.terms?.length) return new Set();
+    const s = new Set();
+    advisedPlan.terms.forEach((t) => {
+      t.courseIds.forEach((id) => s.add(id));
+    });
+    return s;
+  }, [advisedPlan]);
+
+  const idsInActiveAdvisingSlice = useMemo(() => {
+    if (!advisedPlan?.terms?.length || !selectedAdvisedTerm) return null;
+    if (selectedAdvisedTerm === ADVISING_PLAN_ALL_TERMS) return allAdvisedCourseIds;
+    const t = advisedPlan.terms.find((x) => x.label === selectedAdvisedTerm);
+    return t ? new Set(t.courseIds) : allAdvisedCourseIds;
+  }, [advisedPlan, selectedAdvisedTerm, allAdvisedCourseIds]);
+
+  const advisingTermHighlightActive = !!(advisedPlan && selectedAdvisedTerm && idsInActiveAdvisingSlice);
+
+  const advisingPlanDimmed = (courseId) => {
+    if (!advisingTermHighlightActive || !idsInActiveAdvisingSlice) return false;
+    if (courseId === 'START') return false;
+    return !idsInActiveAdvisingSlice.has(courseId);
+  };
+
+  const advisingPlanSpotlight = (courseId) => {
+    if (!advisingTermHighlightActive || !idsInActiveAdvisingSlice) return false;
+    if (courseId === 'START') return false;
+    return idsInActiveAdvisingSlice.has(courseId);
+  };
   
   // Generate connections
   const connections = useMemo(() => {
@@ -2845,6 +3108,8 @@ const IllinoisTechSkillTree = () => {
               isUnlockedByHover={unlockedByHover.has(course.id)}
               isInPrereqChain={prerequisiteChain.includes(course.id)}
               isInActiveCatalogFilter={inActiveCatalogFilterIds.has(course.id)}
+              planTermDimmed={advisingPlanDimmed(course.id)}
+              isAdvisedTermSpotlight={advisingPlanSpotlight(course.id)}
               scale={zoom}
             />
           ))}
@@ -2937,6 +3202,8 @@ const IllinoisTechSkillTree = () => {
               isUnlockedByHover={unlockedByHover.has(course.id)}
               isInPrereqChain={prerequisiteChain.includes(course.id)}
               isInActiveCatalogFilter={inActiveCatalogFilterIds.has(course.id)}
+              planTermDimmed={advisingPlanDimmed(course.id)}
+              isAdvisedTermSpotlight={advisingPlanSpotlight(course.id)}
               scale={zoom}
             />
           ))}
@@ -2956,6 +3223,8 @@ const IllinoisTechSkillTree = () => {
               isUnlockedByHover={unlockedByHover.has(selectedCourseObj.id)}
               isInPrereqChain={prerequisiteChain.includes(selectedCourseObj.id)}
               isInActiveCatalogFilter={inActiveCatalogFilterIds.has(selectedCourseObj.id)}
+              planTermDimmed={advisingPlanDimmed(selectedCourseObj.id)}
+              isAdvisedTermSpotlight={advisingPlanSpotlight(selectedCourseObj.id)}
               scale={zoom}
             />
           )}
@@ -2976,6 +3245,8 @@ const IllinoisTechSkillTree = () => {
               isInPrereqChain={prerequisiteChain.includes(hoveredCourseObj.id)}
               isInActiveCatalogFilter={inActiveCatalogFilterIds.has(hoveredCourseObj.id)}
               isHoveredByParent={true}
+              planTermDimmed={advisingPlanDimmed(hoveredCourseObj.id)}
+              isAdvisedTermSpotlight={advisingPlanSpotlight(hoveredCourseObj.id)}
               scale={zoom}
             />
           )}
@@ -3030,81 +3301,85 @@ const IllinoisTechSkillTree = () => {
           <h1 className="text-black font-normal leading-tight whitespace-nowrap" style={{ fontSize: 36, letterSpacing: '-0.72px', fontFamily: '"Nuosu SIL", serif' }}>
             Illinois Tech Skill Tree
           </h1>
-          <p className="text-gray-500 text-xs mt-1" aria-hidden="true" title="If you rebuilt, a new time means the new bundle loaded.">
-            {process.env.REACT_APP_BUILD_TIME ? `Built ${new Date(process.env.REACT_APP_BUILD_TIME).toLocaleString()}` : 'Development — changes reload live'}
-          </p>
         </div>
         
-        {/* Academic Catalog: one dropdown; open it to see Academic Catalog + Computing, ECE, MMAE, etc. */}
-        <div className="relative shadow-input" style={{ borderRadius: 20 }}>
-          <div className="overflow-hidden" style={{ borderRadius: 20 }}>
-          <select
-            value={activePathway || ''}
-            onChange={(e) => setActivePathway(e.target.value || null)}
-            title="Academic Catalog – open to filter by college"
-            aria-label="Academic Catalog – select to filter by college"
-            className="w-full backdrop-blur-[10px] bg-white/50 border border-black/20 cursor-pointer appearance-none hover:bg-white/70 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/30 text-[#787878]"
-            style={{
-              borderRadius: 20,
-              padding: '8px 32px 8px 16px',
-              fontSize: 14,
-              color: activePathway && pathways.find(p => p.id === activePathway) ? pathways.find(p => p.id === activePathway).color : undefined
-            }}
-          >
-            <option value="">Academic Catalog</option>
-            <optgroup label="Filter by college">
-              {pathways.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </optgroup>
-          </select>
-          </div>
-          <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#787878] rotate-180 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-          </svg>
-        </div>
-        
-        {/* Suggested Pathways dropdown */}
-        <div className="relative shadow-input" style={{ borderRadius: 20 }}>
-          <div className="overflow-hidden" style={{ borderRadius: 20 }}>
-          <select
-            value={selectedMajor || ''}
-            onChange={(e) => setSelectedMajor(e.target.value || null)}
-            className="w-full backdrop-blur-[10px] bg-white/50 border border-black/20 cursor-pointer appearance-none hover:bg-white/70 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/30"
-            style={{ borderRadius: 20, padding: '8px 32px 8px 16px', fontSize: 14, color: selectedMajor && MAJOR_PATHWAYS[selectedMajor] ? MAJOR_PATHWAYS[selectedMajor].color : '#787878' }}
-          >
-            <option value="">Suggested Pathways</option>
-            <optgroup label="Computing">
-              <option value="cs">Computer Science</option>
-              <option value="ai">Artificial Intelligence</option>
-              <option value="ds">Data Science</option>
-            </optgroup>
-            <optgroup label="Engineering">
-              <option value="ee">Electrical Engineering</option>
-              <option value="cpe">Computer Engineering</option>
-              <option value="me">Mechanical Engineering</option>
-              <option value="ae">Aerospace Engineering</option>
-              <option value="ce">Civil Engineering</option>
-              <option value="che">Chemical Engineering</option>
-              <option value="bme">Biomedical Engineering</option>
-            </optgroup>
-            <optgroup label="Science">
-              <option value="bio">Biology</option>
-              <option value="chem">Chemistry</option>
-              <option value="phys">Physics</option>
-            </optgroup>
-            <optgroup label="Other">
-              <option value="psych">Psychological Science</option>
-              <option value="gem">Game Design</option>
-              <option value="arch">Architecture</option>
-              <option value="fin">Finance</option>
-            </optgroup>
-          </select>
-          </div>
-          <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#787878] rotate-180 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-          </svg>
-        </div>
+        {/* Academic Catalog */}
+        <SidebarSelect
+          title="Academic Catalog – open to filter by college"
+          ariaLabel="Academic Catalog – select to filter by college"
+          value={activePathway || ''}
+          onChange={(v) => setActivePathway(v || null)}
+          placeholder="Academic Catalog"
+          clearOption={{ value: '', label: 'Academic Catalog' }}
+          groups={[
+            {
+              heading: 'Filter by college',
+              options: pathways.map((p) => ({ value: p.id, label: p.name }))
+            }
+          ]}
+        />
+
+        {/* Suggested Pathways */}
+        <SidebarSelect
+          ariaLabel="Suggested pathways — select a major track"
+          value={selectedMajor || ''}
+          onChange={(v) => setSelectedMajor(v || null)}
+          placeholder="Suggested Pathways"
+          clearOption={{ value: '', label: 'Suggested Pathways' }}
+          groups={[
+            {
+              heading: 'Computing',
+              options: [
+                { value: 'cs', label: 'Computer Science' },
+                { value: 'ai', label: 'Artificial Intelligence' },
+                { value: 'ds', label: 'Data Science' }
+              ]
+            },
+            {
+              heading: 'Engineering',
+              options: [
+                { value: 'ee', label: 'Electrical Engineering' },
+                { value: 'cpe', label: 'Computer Engineering' },
+                { value: 'me', label: 'Mechanical Engineering' },
+                { value: 'ae', label: 'Aerospace Engineering' },
+                { value: 'ce', label: 'Civil Engineering' },
+                { value: 'che', label: 'Chemical Engineering' },
+                { value: 'bme', label: 'Biomedical Engineering' }
+              ]
+            },
+            {
+              heading: 'Science',
+              options: [
+                { value: 'bio', label: 'Biology' },
+                { value: 'chem', label: 'Chemistry' },
+                { value: 'phys', label: 'Physics' }
+              ]
+            },
+            {
+              heading: 'Other',
+              options: [
+                { value: 'psych', label: 'Psychological Science' },
+                { value: 'gem', label: 'Game Design' },
+                { value: 'arch', label: 'Architecture' },
+                { value: 'fin', label: 'Finance' }
+              ]
+            }
+          ]}
+        />
+
+        {advisedPlan && advisedPlan.terms.length > 0 && (
+          <SidebarSelect
+            title="Advisor plan — highlight courses for this term on the map"
+            ariaLabel="Advisor plan — highlight courses for this term on the map"
+            value={selectedAdvisedTerm ?? advisedPlan.terms[0].label}
+            onChange={(v) => setSelectedAdvisedTerm(v)}
+            placeholder={advisedPlan.terms[0].label}
+            options={[
+              { value: ADVISING_PLAN_ALL_TERMS, label: 'All planned courses' },
+              ...advisedPlan.terms.map((t) => ({ value: t.label, label: t.label }))
+            ]}
+          />
+        )}
         
         {/* Courses search - CourseSearch renders here */}
         <div className="relative w-full">

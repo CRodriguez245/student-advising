@@ -15,6 +15,11 @@ const {
   getStudentPersonaPrompt,
   getPersonaStage
 } = require('./utils/prompts');
+const {
+  extractPlannedTermsFromCoachReply,
+  inferAdvisedPlanFromProse,
+  preferProsePartitionIfSameCourses
+} = require('./utils/advisedPlan');
 
 const DQ_DIMENSIONS = ['framing', 'alternatives', 'information', 'values', 'reasoning', 'commitment'];
 
@@ -63,20 +68,30 @@ async function processChatTurn(params) {
 
   if (mode === 'coach') {
     const systemPrompt = getCoachSystemPrompt(curriculumContext);
-    const coachResponse = await getCoachResponse(
+    const coachResponseRaw = await getCoachResponse(
       userMessage,
       systemPrompt,
       conversationHistory
     );
+    const { reply: coachReplyClean, advised_plan: plannedFromJson } =
+      extractPlannedTermsFromCoachReply(coachResponseRaw);
+    let advised_plan = plannedFromJson;
+    const inferred =
+      Array.isArray(curriculumData.courses) && curriculumData.courses.length > 0
+        ? inferAdvisedPlanFromProse(coachReplyClean, curriculumData.courses, userMessage)
+        : null;
+    if (inferred && inferred.terms.length >= 2) {
+      advised_plan = preferProsePartitionIfSameCourses(advised_plan, inferred);
+    }
     const dqScores = await scoreCoachingQuality(
-      coachResponse,
+      coachReplyClean,
       userMessage,
       conversationHistory
     );
     const newHistory = [
       ...conversationHistory,
       { role: 'user', content: userMessage },
-      { role: 'assistant', content: coachResponse }
+      { role: 'assistant', content: coachReplyClean }
     ];
     const dqValues = DQ_DIMENSIONS
       .map(d => dqScores[d])
@@ -91,13 +106,14 @@ async function processChatTurn(params) {
       mode: 'coach',
       session_id: sessionId,
       user_message: userMessage,
-      coach_reply: coachResponse,
+      coach_reply: coachReplyClean,
       dq_score: dqScores,
       dq_score_minimum: dqMinimum,
       turnsUsed,
       dqCoverage: newCoverage,
       conversationStatus,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      ...(advised_plan && { advised_plan })
     };
     if (conversationStatus === 'dq-complete') {
       response.sessionSummary = {

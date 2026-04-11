@@ -5,7 +5,15 @@
  * This adapter bridges the decision coach API with the course advisor UI.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import {
+  extractPlannedTermsFromCoachReply,
+  inferAdvisedPlanFromProse,
+  preferProsePartitionIfSameCourses
+} from '../utils/advisedPlan';
+
+const ADVISOR_INPUT_MIN_HEIGHT = 22;
+const ADVISOR_INPUT_MAX_HEIGHT = 120;
 
 /** BUS 101, BUS-101, bus 101 → catalog ids */
 function extractCatalogIdsFromRegexMessage(message, courses) {
@@ -205,6 +213,17 @@ const DecisionCoachAdapter = ({
   const [personaProgress, setPersonaProgress] = useState(null);
   const [dqCoverage, setDqCoverage] = useState({}); // For stateless API (e.g. Vercel): send with each request
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const sh = el.scrollHeight;
+    const next = Math.min(ADVISOR_INPUT_MAX_HEIGHT, Math.max(ADVISOR_INPUT_MIN_HEIGHT, sh));
+    el.style.height = `${next}px`;
+    el.style.overflowY = sh > ADVISOR_INPUT_MAX_HEIGHT ? 'auto' : 'hidden';
+  }, [input]);
   
   // Initialize messages based on mode
   useEffect(() => {
@@ -345,26 +364,49 @@ const DecisionCoachAdapter = ({
         mode === 'coach'
           ? (data.coach_reply || data.reply || "I'm sorry, I couldn't process that request.")
           : (data.persona_reply || data.reply || "I'm sorry, I couldn't process that request.");
+      const planExtract = mode === 'coach' ? extractPlannedTermsFromCoachReply(rawAssistant) : { reply: rawAssistant, advised_plan: null };
       const assistantMessage =
-        mode === 'coach' ? stripAdvisorMetaFromReply(rawAssistant) : rawAssistant;
-      
+        mode === 'coach' ? stripAdvisorMetaFromReply(planExtract.reply) : rawAssistant;
+
+      let advisedPlanPayload =
+        data.advised_plan?.terms?.length > 0 ? data.advised_plan : planExtract.advised_plan;
+
+      const inferredFromProse =
+        mode === 'coach' && courses?.length
+          ? inferAdvisedPlanFromProse(planExtract.reply, courses, userMessage)
+          : null;
+
+      if (inferredFromProse?.terms?.length >= 2) {
+        advisedPlanPayload = preferProsePartitionIfSameCourses(
+          advisedPlanPayload?.terms?.length ? advisedPlanPayload : null,
+          inferredFromProse
+        );
+      }
+
       // Update persona stage/progress for practice mode
       if (mode === 'practice' && data.persona_stage) {
         setPersonaStage(data.persona_stage);
         setPersonaProgress(data.persona_progress);
       }
       
-      // Map highlight + zoom: explicit codes in reply, else catalog labels, else UI pathway, else infer from text (e.g. "business major")
-      const mapPath = buildMapPathFromAdvisorReply({
-        assistantMessage: rawAssistant,
-        userMessage,
-        courses,
-        pathways,
-        selectedMajor,
-        mode
-      });
-      if (mapPath && onSuggestPath) {
-        onSuggestPath(mapPath);
+      // Multi-term plan → mandala term toggle; else legacy path highlight
+      if (advisedPlanPayload?.terms?.length && onSuggestPath) {
+        onSuggestPath({
+          terms: advisedPlanPayload.terms,
+          color: '#00FF88'
+        });
+      } else {
+        const mapPath = buildMapPathFromAdvisorReply({
+          assistantMessage: rawAssistant,
+          userMessage,
+          courses,
+          pathways,
+          selectedMajor,
+          mode
+        });
+        if (mapPath && onSuggestPath) {
+          onSuggestPath(mapPath);
+        }
       }
 
       const singleCourseFocus = pickSingleCatalogCourseFromMessage(userMessage, courses);
@@ -429,7 +471,7 @@ const DecisionCoachAdapter = ({
     }
   };
   
-  const handleKeyPress = (e) => {
+  const handleInputKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -451,6 +493,19 @@ const DecisionCoachAdapter = ({
   // Chat UI - bottom right, layout per reference image
   return (
     <div className="fixed bottom-6 right-6 w-[357px] h-[455px] backdrop-blur-[10px] bg-white/50 border border-black/20 rounded-[5px] shadow-[0px_4px_20px_0px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden z-[100]">
+      <style>{`
+        @keyframes coach-thinking-dot {
+          0%, 80%, 100% { opacity: 0.2; }
+          40% { opacity: 1; }
+        }
+        .coach-thinking-dots span {
+          display: inline-block;
+          animation: coach-thinking-dot 1.2s ease-in-out infinite;
+        }
+        .coach-thinking-dots span:nth-child(1) { animation-delay: 0s; }
+        .coach-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .coach-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+      `}</style>
       {/* Header: title + short hairline */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex justify-between items-center">
@@ -466,7 +521,7 @@ const DecisionCoachAdapter = ({
       </div>
 
       {/* Messages - coach: avatar left + bubble with left tail; user: bubble with right tail */}
-      <div className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-5">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 flex flex-col gap-5">
         {messages.map((msg, idx) => (
           <div
             key={idx}
@@ -496,8 +551,17 @@ const DecisionCoachAdapter = ({
         {isLoading && (
           <div className="flex justify-start">
             <div className="w-12 h-12 flex-shrink-0" />
-            <div className="ml-2 px-4 py-3 rounded-[5px] bg-[#e0e0e0] text-gray-500 text-xs">
-              Thinking...
+            <div
+              className="ml-2 px-4 py-3 rounded-[5px] bg-[#e0e0e0] text-gray-500 text-xs inline-flex items-baseline"
+              role="status"
+              aria-label="Advisor is thinking"
+            >
+              <span>Thinking</span>
+              <span className="coach-thinking-dots inline-flex ml-px" aria-hidden="true">
+                <span>.</span>
+                <span>.</span>
+                <span>.</span>
+              </span>
             </div>
           </div>
         )}
@@ -507,16 +571,20 @@ const DecisionCoachAdapter = ({
       {/* Input */}
       <div className="px-4 pb-4 pt-1">
         <div className="w-[99%] border-b border-gray-200/80 mb-1.5" />
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleInputKeyDown}
             placeholder="Ask your advisor..."
-            className="flex-1 bg-transparent border-none outline-none text-sm text-black placeholder:text-gray-400 min-w-0"
+            rows={1}
+            aria-label="Message to advisor"
+            className="flex-1 bg-transparent border-none outline-none text-sm text-black placeholder:text-gray-400 min-w-0 py-1 resize-none leading-snug"
+            style={{ minHeight: ADVISOR_INPUT_MIN_HEIGHT, maxHeight: ADVISOR_INPUT_MAX_HEIGHT }}
           />
           <button
+            type="button"
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
             className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-transparent border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-[#2C73EB] hover:text-[#2563c7]"

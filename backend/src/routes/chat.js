@@ -12,6 +12,11 @@ const {
   getPersonaStage,
   studentPersonas
 } = require('../utils/prompts');
+const {
+  extractPlannedTermsFromCoachReply,
+  inferAdvisedPlanFromProse,
+  preferProsePartitionIfSameCourses
+} = require('../utils/advisedPlan');
 
 const router = express.Router();
 
@@ -106,15 +111,25 @@ router.post('/', async (req, res) => {
     if (mode === 'coach') {
       // MODE 1: AI Coach helps student (pass DQ coverage so coach progresses incrementally)
       const systemPrompt = getCoachSystemPrompt(curriculumContext);
-      const coachResponse = await getCoachResponse(
+      const coachResponseRaw = await getCoachResponse(
         userMessage,
         systemPrompt,
         session.conversationHistory
       );
+      const { reply: coachReplyClean, advised_plan: plannedFromJson } =
+        extractPlannedTermsFromCoachReply(coachResponseRaw);
+      let advised_plan = plannedFromJson;
+      const inferred =
+        Array.isArray(curriculumData.courses) && curriculumData.courses.length > 0
+          ? inferAdvisedPlanFromProse(coachReplyClean, curriculumData.courses, userMessage)
+          : null;
+      if (inferred && inferred.terms.length >= 2) {
+        advised_plan = preferProsePartitionIfSameCourses(advised_plan, inferred);
+      }
 
       // Score AI coach's effectiveness
       dqScores = await scoreCoachingQuality(
-        coachResponse,
+        coachReplyClean,
         userMessage,
         session.conversationHistory
       );
@@ -122,7 +137,7 @@ router.post('/', async (req, res) => {
       // Update conversation history
       session.conversationHistory.push(
         { role: 'user', content: userMessage },
-        { role: 'assistant', content: coachResponse }
+        { role: 'assistant', content: coachReplyClean }
       );
 
       // Calculate minimum DQ score
@@ -144,13 +159,14 @@ router.post('/', async (req, res) => {
         session_id: sessionId,
         user_id: userId,
         user_message: userMessage,
-        coach_reply: coachResponse,
+        coach_reply: coachReplyClean,
         dq_score: dqScores,
         dq_score_minimum: dqMinimum,
         turnsUsed: session.turnsUsed,
         dqCoverage: session.dqCoverage,
         conversationStatus: Object.values(session.dqCoverage).every(Boolean) ? 'dq-complete' : 'in-progress',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        ...(advised_plan && { advised_plan })
       };
 
     } else {
